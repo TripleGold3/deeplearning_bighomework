@@ -33,7 +33,9 @@ class MyBatchNormalization1dFunction(Function):
         #########这里的batch_sqrt_var是不是该考虑eppsilon的影响
         grad_batch_mean = torch.sum(grad_X_norm * (-1) / batch_sqrt_var, dim=0, keepdim=True) + grad_batch_var * torch.sum(-2 * (input - batch_mean), dim=0, keepdim=True) / N
         grad_input = grad_X_norm / batch_sqrt_var + grad_batch_var * 2 * (input - batch_mean) / N + grad_batch_mean / N
-        return grad_input, None, None, None, None, grad_gamma, grad_beta, None
+        return grad_input, None, None, grad_gamma, grad_beta, None, None, None
+
+
 
 # 1D BatchNormlization
 class MyBatchNormalization1d(nn.Module):
@@ -78,4 +80,3 @@ if __name__ == '__main__':
     loss.backward()
     print(X.grad)
     
-   

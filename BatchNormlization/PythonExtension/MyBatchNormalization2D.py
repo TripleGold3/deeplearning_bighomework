@@ -13,9 +13,9 @@ class MyBatchNormalization2dFunction(Function):
             batch_sqrt_var = torch.sqrt(batch_var + epsilon.unsqueeze(-1).unsqueeze(-1))
             X_norm = (X - batch_mean) / batch_sqrt_var
             output = gamma.unsqueeze(-1).unsqueeze(-1) * X_norm + beta.unsqueeze(-1).unsqueeze(-1)
-            ctx.save_for_backward(X, X_norm, batch_mean, batch_var, batch_sqrt_var, gamma, beta, epsilon)
-            moving_mean = (monmentum * moving_mean).unsqueeze(-1).unsqueeze(-1) + (1 - monmentum) * batch_mean
-            moving_var = (monmentum * moving_var).unsqueeze(-1).unsqueeze(-1) + (1 - monmentum) * batch_var
+            ctx.save_for_backward(X, X_norm, batch_mean, batch_var, batch_sqrt_var, gamma,  epsilon)
+            moving_mean = (monmentum * moving_mean) + (1 - monmentum) * batch_mean.squeeze(-1).squeeze(-1)
+            moving_var = (monmentum * moving_var)+  (1 - monmentum) * batch_var.squeeze(-1).squeeze(-1)
         else:
             X_norm = (X - moving_mean.unsqueeze(-1).unsqueeze(-1)) / torch.sqrt((moving_var + epsilon).unsqueeze(-1).unsqueeze(-1))
             output = gamma.unsqueeze(-1).unsqueeze(-1) * X_norm + beta.unsqueeze(-1).unsqueeze(-1)
@@ -23,13 +23,16 @@ class MyBatchNormalization2dFunction(Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, X_norm, batch_mean, batch_var, batch_sqrt_var, gamma, beta, epsilon = ctx.saved_tensors
+        input, X_norm, batch_mean, batch_var, batch_sqrt_var, gamma,  epsilon = ctx.saved_tensors
         N = (grad_output.size(0))
-        grad_beta = torch.sum(grad_output, dim=0, keepdim=True).sum(dim=2, keepdim=True).sum(dim=3, keepdim=True)
-        grad_gamma = torch.sum(grad_output * X_norm, dim=0, keepdim=True).sum(dim=2, keepdim=True).sum(dim=3, keepdim=True)
+        grad_beta = (torch.sum(grad_output, dim=0, keepdim=True).sum(dim=-1, keepdim=False).sum(dim=-1, keepdim=False))
+        grad_gamma = (torch.sum(grad_output * X_norm, dim=0, keepdim=True).sum(dim=-1, keepdim=False).sum(dim=-1,keepdim=False))
         grad_X_norm = grad_output * (gamma.unsqueeze(-1).unsqueeze(-1))
-        grad_X = (1. / N) * (1. / batch_sqrt_var) * (N * grad_X_norm - torch.sum(grad_X_norm, dim=0, keepdim=True).sum(dim=2, keepdim=True).sum(dim=3, keepdim=True) - X_norm * torch.sum(grad_X_norm * X_norm, dim=0, keepdim=True).sum(dim=2, keepdim=True).sum(dim=3, keepdim=True))
-        return grad_X, None, None,None, None, grad_gamma, grad_beta, None
+        grad_batch_var = torch.sum(grad_X_norm * (input - batch_mean), dim=0, keepdim=True).sum(dim=2, keepdim=True).sum(dim=3, keepdim=True) * (-0.5) * (batch_var + epsilon.unsqueeze(-1).unsqueeze(-1)).pow(-1.5)
+        grad_batch_mean = torch.sum(grad_X_norm * (-1) / batch_sqrt_var, dim=0, keepdim=True).sum(dim=2, keepdim=True).sum(dim=3,keepdim=True) + grad_batch_var * (torch.sum(-2 * (input - batch_mean), dim=0, keepdim=True).sum(dim=2,keepdim=True).sum(dim=3, keepdim=True)) / N
+
+        grad_X = grad_X_norm / batch_sqrt_var + grad_batch_var * 2 * (input - batch_mean) / N + grad_batch_mean / N
+        return grad_X, None, None, grad_gamma, grad_beta, None, None, None
 
 class MyBatchNormalization2d(nn.Module):
     def __init__(self, num_features, epsilon=1e-5, momentum=0.1, dtype=None, device=None):
@@ -65,12 +68,9 @@ if __name__ == '__main__':
     output = model(X)
     print(output)
     
-   
-    
+    grad_output = torch.randn(4, 3, 2, 2).to(device)
+    ctx = output
     # backward
-    loss = torch.sum(output)
-    loss.backward()
-    print(X.grad)
-    
-
+    loss = torch.sum(output * grad_output)
+    loss.backward
 
