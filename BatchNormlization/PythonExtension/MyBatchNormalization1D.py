@@ -37,16 +37,45 @@ class MyBatchNormalization1dFunction(Function):
 
 # 1D BatchNormlization
 class MyBatchNormalization1d(nn.Module):
-    def __init__(self, num_features, eps=1e-5, momentum=0.1):
+    def __init__(self, num_features, eps=1e-5, momentum=0.1,device=None, dtype=None):
         super(MyBatchNormalization1d, self).__init__()
+        factory_kwargs = {'device': device, 'dtype': dtype}
         self.num_features = num_features
-        self.eps = eps * torch.ones(1, requires_grad=True)
-        self.momentum = momentum * torch.ones(1, requires_grad=True)
+       
         self.gamma = torch.nn.Parameter(torch.ones(num_features))
         self.beta = torch.nn.Parameter(torch.zeros(num_features))
-        self.mean = torch.zeros(num_features,requires_grad=True)
-        self.var = torch.ones(num_features,requires_grad=True)
+        self.register_buffer('epsilon', eps * torch.ones(1, **factory_kwargs))
+        self.register_buffer('momentum', momentum * torch.ones(1, **factory_kwargs))
+        self.register_buffer('moving_mean', torch.zeros(num_features, **factory_kwargs))
+        self.register_buffer('moving_var', torch.ones(num_features, **factory_kwargs))
+    
+        self.epsilon: Optional[Tensor]
+        self.momentum: Optional[Tensor]
+        self.moving_mean: Optional[Tensor]
+        self.moving_var: Optional[Tensor]
+      
     def forward(self, X):
-        output = MyBatchNormalization1dFunction.apply(X, self.training, self.eps, self.gamma, self.beta, self.momentum, self.mean, self.var)
+        output = MyBatchNormalization1dFunction.apply(X, self.training, self.epsilon, self.gamma, self.beta, self.momentum, self.moving_mean, self.moving_var)
         return output
          
+if __name__ == '__main__':
+    # test
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")   
+    # input
+    X = torch.randn(4, 3).to(device)
+    X = Variable(X, requires_grad=True)
+    # model
+    model = MyBatchNormalization1d(3)
+    model.to(device)
+
+    # model.eval()
+    output = model(X)
+    print(output)
+    
+   
+    # backward
+    loss = torch.sum(output)
+    loss.backward()
+    print(X.grad)
+    
+   
