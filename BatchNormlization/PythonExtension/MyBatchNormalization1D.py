@@ -7,7 +7,7 @@ from torch.autograd import Variable
 
 class MyBatchNormalization1dFunction(Function):
     @staticmethod
-    def forward(ctx, X, train_flag, epsilon, gamma, beta, monmentum, moving_mean, moving_var):
+    def forward(ctx, someclass, X, train_flag, epsilon, gamma, beta, monmentum, moving_mean, moving_var):
         if train_flag:
             batch_mean = X.mean(dim=0, keepdim=True)
             batch_var = (X - batch_mean).pow(2).mean(dim=0, keepdim=True)
@@ -17,6 +17,8 @@ class MyBatchNormalization1dFunction(Function):
             ctx.save_for_backward(X, X_norm, batch_mean, batch_var, batch_sqrt_var, gamma, beta, epsilon)
             moving_mean = monmentum * moving_mean + (1 - monmentum) * batch_mean
             moving_var = monmentum * moving_var + (1 - monmentum) * batch_var
+            someclass.moving_mean = moving_mean
+            someclass.moving_var = moving_var
         else:
             X_norm = (X - moving_mean) / torch.sqrt(moving_var + epsilon)
             output = gamma * X_norm + beta
@@ -33,7 +35,7 @@ class MyBatchNormalization1dFunction(Function):
         #########这里的batch_sqrt_var是不是该考虑eppsilon的影响
         grad_batch_mean = torch.sum(grad_X_norm * (-1) / batch_sqrt_var, dim=0, keepdim=True) + grad_batch_var * torch.sum(-2 * (input - batch_mean), dim=0, keepdim=True) / N
         grad_input = grad_X_norm / batch_sqrt_var + grad_batch_var * 2 * (input - batch_mean) / N + grad_batch_mean / N
-        return grad_input, None, None, grad_gamma, grad_beta, None, None, None
+        return None, grad_input, None, None, grad_gamma, grad_beta, None, None, None
 
 
 
@@ -57,7 +59,7 @@ class MyBatchNormalization1d(nn.Module):
         self.moving_var: Optional[Tensor]
       
     def forward(self, X):
-        output = MyBatchNormalization1dFunction.apply(X, self.training, self.epsilon, self.gamma, self.beta, self.momentum, self.moving_mean, self.moving_var)
+        output = MyBatchNormalization1dFunction.apply(self if self.training else None, X, self.training, self.epsilon, self.gamma, self.beta, self.momentum, self.moving_mean, self.moving_var)
         return output
          
 if __name__ == '__main__':
@@ -74,9 +76,12 @@ if __name__ == '__main__':
     output = model(X)
     print(output)
     
+    model.eval()
+    output = model(X)
+    print(output)
    
     # backward
-    loss = torch.sum(output)
-    loss.backward()
-    print(X.grad)
+    # loss = torch.sum(output)
+    # loss.backward()
+    # print(X.grad)
     

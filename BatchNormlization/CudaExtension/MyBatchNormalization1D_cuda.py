@@ -4,35 +4,33 @@ from torch.autograd import Function as Function
 import torch.nn.modules as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-import MyBatchNorm1D_CPP
-
-class MyBatchNormalization1dFunction_CPP(Function):
+import MyBatchNorm1D_cuda 
+class MyBatchNormalization1dFunction_cuda(Function):
     @staticmethod
     def forward(ctx, someclass, X, train_flag, epsilon, gamma, beta, monmentum, moving_mean, moving_var):
         if train_flag:
-            
             output, batch_norm, batch_mean, batch_var, batch_std, moving_mean, moving_var = \
-                MyBatchNorm1D_CPP.train_forward(X, gamma, beta, moving_mean, moving_var, monmentum, epsilon)
+                MyBatchNorm1D_cuda.train_forward(X, gamma, beta, moving_mean, moving_var, monmentum, epsilon)
             someclass.moving_mean = moving_mean
             someclass.moving_var = moving_var
             ctx.save_for_backward(X, batch_norm, batch_mean, batch_var, batch_std, gamma, beta, epsilon)
         else:
-            [output] = MyBatchNorm1D_CPP.validation_forward(X, gamma, beta, moving_mean, moving_var, epsilon)
+            [output] = MyBatchNorm1D_cuda.validation_forward(X, gamma, beta, moving_mean, moving_var, epsilon)
         return output
         
     @staticmethod
     def backward(ctx, grad_output):
         input, X_norm, batch_mean, batch_var, batch_sqrt_var, gamma, beta, epsilon = ctx.saved_tensors
         grad_input, grad_gamma, grad_beta = \
-            MyBatchNorm1D_CPP.train_backward(grad_output, input, X_norm, batch_mean, batch_var, batch_sqrt_var, gamma, beta, epsilon)    
+            MyBatchNorm1D_cuda.train_backward(grad_output, input, X_norm, batch_mean, batch_var, batch_sqrt_var, gamma, beta, epsilon)    
         return None, grad_input, None, None, grad_gamma, grad_beta, None, None, None
 
 
 
 # 1D BatchNormlization
-class MyBatchNormalization1d_CPP(nn.Module):
+class MyBatchNormalization1d_cuda(nn.Module):
     def __init__(self, num_features, eps=1e-5, momentum=0.1,device=None, dtype=None):
-        super(MyBatchNormalization1d_CPP, self).__init__()
+        super(MyBatchNormalization1d_cuda, self).__init__()
         factory_kwargs = {'device': device, 'dtype': dtype}
         self.num_features = num_features
        
@@ -49,29 +47,32 @@ class MyBatchNormalization1d_CPP(nn.Module):
         self.moving_var: Optional[Tensor]
       
     def forward(self, X):
-        output = MyBatchNormalization1dFunction_CPP.apply(self if self.training else None, X, self.training, self.epsilon, self.gamma, self.beta, self.momentum, self.moving_mean, self.moving_var)
+        output = MyBatchNormalization1dFunction_cuda.apply(self if self.training else None, X, self.training, self.epsilon, self.gamma, self.beta, self.momentum, self.moving_mean, self.moving_var)
         return  output
          
 if __name__ == '__main__':
     # test
-    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")   
-    device = torch.device("cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")   
+    # device = torch.device("cpu")
     # input
     X = torch.randn(4, 3).to(device)
-    X = Variable(X, requires_grad=True)
-
+    # X = Variable(X, requires_grad=True)
+    print(X.type())
 
     # model
-    model = MyBatchNormalization1d_CPP(3)
+    model = MyBatchNormalization1d_cuda(3)
     model.to(device)
     # model.eval()
 
-    output = model(X)
-    print("cpp output:",output)
+    ctx, output = model(X)
+    print("cuda output:",output)
     
-    model.eval()
-    output = model(X)
+    # model.eval()
+    # output = model(X)
     
+    
+    grad_output = torch.ones((4,3), requires_grad=True).to(device)
+    print(MyBatchNormalization1dFunction_cuda.backward(ctx, grad_output))
 #     grad_output = torch.ones((4,3), requires_grad=True).to(device)
 #     loss = MyBatchNormalization1dFunction_CPP.backward(ctx, grad_output)
 #     print(loss)

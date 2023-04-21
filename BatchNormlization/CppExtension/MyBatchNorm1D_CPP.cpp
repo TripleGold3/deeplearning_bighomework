@@ -1,6 +1,6 @@
-#include <iostream>
+// #include <iostream>
 #include <vector>
-#include <torch/torch.h>
+// #include <torch/torch.h>
 #include <torch/extension.h>
 
 
@@ -56,29 +56,29 @@ std::vector<torch::Tensor> MyBatchNorm1D_train_backword(
   return {d_input, d_gamma, d_beta};
 }
 
-// PYBIND11_MODULE(TORCH_EXTENSION_NAME, m){
-//   m.def("train_forward", &MyBatchNorm1D_train_forward, "MyBatchNorm1D train forward");
-//   m.def("validation_forward", &MyBatchNorm1D_validation_forward, "MyBatchNorm1D validation forward");
-//   m.def("train_backward", &MyBatchNorm1D_train_backword, "MyBatchNorm1D train backward");
-// }
-
-
-int main(){
-  auto input = torch::randn({4,3});
-  auto gamma = torch::ones({3});
-  auto beta = torch::zeros({3});
-  auto running_mean = torch::zeros({3});
-  auto running_var = torch::ones({3});
-  auto momentum = torch::tensor(0.1);
-  auto eps = torch::tensor(1e-5);
-  auto output = MyBatchNorm1D_train_forward(input, gamma, beta, running_mean, running_var, momentum, eps);
-  std::cout << output[0] << std::endl;  
-  std::cout << output[1] << std::endl;
-  std::cout << output[2] << std::endl;
-  std::cout << output[3] << std::endl;
-  std::cout << output[4] << std::endl;
-  std::cout << output[5] << std::endl;
-  std::cout << output[6] << std::endl;
-  return 0;
-
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m){
+  m.def("train_forward", &MyBatchNorm1D_train_forward, "MyBatchNorm1D train forward");
+  m.def("validation_forward", &MyBatchNorm1D_validation_forward, "MyBatchNorm1D validation forward");
+  m.def("train_backward", &MyBatchNorm1D_train_backword, "MyBatchNorm1D train backward");
 }
+
+
+// int main(){
+//   auto input = torch::randn({4,3});
+//   auto gamma = torch::ones({3});
+//   auto beta = torch::zeros({3});
+//   auto running_mean = torch::zeros({3});
+//   auto running_var = torch::ones({3});
+//   auto momentum = torch::tensor(0.1);
+//   auto eps = torch::tensor(1e-5);
+//   auto output = MyBatchNorm1D_train_forward(input, gamma, beta, running_mean, running_var, momentum, eps);
+//   std::cout << output[0] << std::endl;  
+//   std::cout << output[1] << std::endl;
+//   std::cout << output[2] << std::endl;
+//   std::cout << output[3] << std::endl;
+//   std::cout << output[4] << std::endl;
+//   std::cout << output[5] << std::endl;
+//   std::cout << output[6] << std::endl;
+//   return 0;
+
+// }

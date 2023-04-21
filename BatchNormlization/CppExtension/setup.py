@@ -2,10 +2,14 @@ from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CppExtension
 
 setup(
-    name='MyBatchNorm1D_CPP',
+    name='MyBatchNorm2D_CPP',
     ext_modules=[
-        CppExtension('MyBatchNorm1D_CPP', ['MyBatchNorm1D_CPP.cpp']),
+        CppExtension('MyBatchNorm2D_CPP', ['MyBatchNorm2D_CPP.cpp']),
     ],
     cmdclass={
         'build_ext': BuildExtension
     })
+
+  
+  
+   
