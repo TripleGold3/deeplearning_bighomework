@@ -5,13 +5,143 @@
 
 #include <vector>
 
-// torch::Tensor elemwise_mul(const torch::Tensor& A,const torch::Tensor& B);
-// __global__ void elemwise_mul_kernel(const float* A, const float* B, float* C,
-//                                     const int M, const int N, const int K,
-//                                     const int A_stride0, const int A_stride1,
-//                                     const int B_stride0, const int B_stride1);
 
 
+
+// CUDA forward declarations
+namespace{
+template <typename scalar_t>
+__global__ void element_wise_mul_kernel( float* A, float* B, float* C,
+                                        int num_elements,  int num_dim,
+                                        int* A_strides,  int* B_strides,  int* C_strides,
+                                        int* A_sizes, int* B_sizes,  int* C_sizes) {
+    
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < num_elements) {
+        int a_index = 0;
+        int b_index = 0;
+        int c_index = 0;
+
+        int offset = index;
+
+        for (int dim = num_dim - 1; dim >= 0; dim--) {
+            int a_size = A_sizes[dim];
+            int b_size = B_sizes[dim];
+            int c_size = C_sizes[dim];
+
+            int a_stride = A_strides[dim];
+            int b_stride = B_strides[dim];
+            int c_stride = C_strides[dim];
+
+            int i = offset % c_size;
+            offset /= c_size;
+
+            if (a_size == 1) {
+                a_index += 0;
+            } else if (c_size == 1) {
+                a_index += i * a_stride;
+            } else {
+                a_index += (i % a_size) * a_stride;
+            }
+
+            if (b_size == 1) {
+                b_index += 0;
+            } else if (c_size == 1) {
+                b_index += i * b_stride;
+            } else {
+                b_index += (i % b_size) * b_stride;
+            }
+
+            c_index += i * c_stride;
+        }
+
+        C[c_index] = A[a_index] * B[b_index];
+    }
+}
+
+torch::Tensor element_wise_mul( torch::Tensor& A, torch::Tensor& B) {
+    TORCH_CHECK(A.dtype() == B.dtype(), "Both inputs must have the same dtype.");
+
+    std::vector<int64_t> output_size;
+    for (int i = 0; i < A.dim(); i++) {
+        TORCH_CHECK(A.size(i) == B.size(i) || A.size(i) == 1 || B.size(i) == 1,
+                    "The size of tensor A (", A.size(i), ") must match the size of tensor B (",
+                    B.size(i), ") at non-singleton dimension ", i, ".");
+        output_size.push_back(std::max(A.size(i), B.size(i)));
+    }
+    torch::Tensor A_broad = A.expand(output_size);
+    torch::Tensor B_broad = B.expand(output_size);
+    torch::Tensor C = torch::empty(output_size, A.options());
+       
+
+    A = A.expand(output_size);
+    B = B.expand(output_size);
+   
+
+    torch::Tensor C = torch::empty(output_size, A.options());
+
+    float* d_A = A.data_ptr<float>();
+    float* d_B = B.data_ptr<float>();
+    float* d_C = C.data_ptr<float>();
+
+    int num_dim = A.dim();
+    int num_elements = C.numel();
+
+    int* A_strides = new int[num_dim];
+    int* B_strides = new int[num_dim];
+    int* C_strides = new int[num_dim];
+    int* A_sizes = new int[num_dim];
+    int* B_sizes = new int[num_dim];
+    int* C_sizes = new int[num_dim];
+
+    for (int i = 0; i < num_dim; i++) {
+        A_sizes[i] = A.size(i);
+        B_sizes[i] = B.size(i);
+        C_sizes[i] = C.size(i);
+    }
+
+    int* device_A_strides;
+    int* device_B_strides;
+    int* device_C_strides;
+    int* device_A_sizes;
+    int* device_B_sizes;
+    int* device_C_sizes;
+
+    cudaMalloc(&device_A_strides, sizeof(int) * num_dim);
+    cudaMalloc(&device_B_strides, sizeof(int) * num_dim);
+    cudaMalloc(&device_C_strides, sizeof(int) * num_dim);
+    cudaMalloc(&device_A_sizes, sizeof(int) * num_dim);
+    cudaMalloc(&device_B_sizes, sizeof(int) * num_dim);
+    cudaMalloc(&device_C_sizes, sizeof(int) * num_dim);
+
+    cudaMemcpy(device_A_strides, A_strides, sizeof(int) * num_dim, cudaMemcpyHostToDevice);
+    cudaMemcpy(device_B_strides, B_strides, sizeof(int) * num_dim, cudaMemcpyHostToDevice);
+    cudaMemcpy(device_C_strides, C_strides, sizeof(int) * num_dim, cudaMemcpyHostToDevice);
+    cudaMemcpy(device_A_sizes, A_sizes, sizeof(int) * num_dim, cudaMemcpyHostToDevice);
+    cudaMemcpy(device_B_sizes, B_sizes, sizeof(int) * num_dim, cudaMemcpyHostToDevice);
+    cudaMemcpy(device_C_sizes, C_sizes, sizeof(int) * num_dim, cudaMemcpyHostToDevice);
+
+    dim3 blockDim(256);
+    dim3 gridDim((num_elements + blockDim.x - 1) / blockDim.x);
+
+    element_wise_mul_kernel<<<gridDim, blockDim>>>(d_A, d_B, d_C, num_elements, num_dim,
+                                               device_A_strides, device_B_strides, device_C_strides,
+                                               device_A_sizes, device_B_sizes, device_C_sizes);
+
+    cudaFree(device_A_strides);
+    cudaFree(device_B_strides);
+    cudaFree(device_C_strides);
+    cudaFree(device_A_sizes);
+    cudaFree(device_B_sizes);
+    cudaFree(device_C_sizes);
+
+    return C;
+}
+
+
+
+
+} // namespace
 
 std::vector<torch::Tensor> MyBatchNorm1D_train_cuda_forward(
     torch::Tensor input, 
@@ -55,7 +185,7 @@ std::vector<torch::Tensor> MyBatchNorm1D_train_cuda_backward(
     torch::Tensor gamma, 
     torch::Tensor beta, 
     torch::Tensor eps) {
-    auto d_gamma = batch_norm.mul(grad_output).sum({0}, /*keepdim=*/true);
+    auto d_gamma = elementwise_product(batch_norm, grad_output).sum({0}, /*keepdim=*/true);
     auto d_beta = grad_output.sum({0},/*keepdim=*/true);
     auto d_batch_norm = grad_output.mul(gamma);
     auto d_batch_var = (d_batch_norm.mul(input.sub(batch_mean)).mul(-0.5).mul(batch_var.add(eps).pow(-1.5))).sum({0}, /*keepdim=*/true);
@@ -63,79 +193,3 @@ std::vector<torch::Tensor> MyBatchNorm1D_train_cuda_backward(
     auto d_input = d_batch_norm.div(batch_std).add(d_batch_var.mul(2).div(input.size(0)).mul(input.sub(batch_mean))).add(d_batch_mean.div(input.size(0)));
     return {d_input, d_gamma, d_beta};
 }
-/*
-
-__global__ void elemwise_mul_kernel(const float* A, const float* B, float* C,
-                                    const int M, const int N, const int K,
-                                    const int A_stride0, const int A_stride1,
-                                    const int B_stride0, const int B_stride1) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (i < M && j < N) {
-        int idx = i * N + j;
-
-        int a_idx0 = i * A_stride0;
-        int b_idx0 = j * B_stride0;
-
-        for (int k = 0; k < K; k++) {
-            int a_idx = a_idx0 + k * A_stride1;
-            int b_idx = b_idx0 + k * B_stride1;
-
-            C[idx] += A[a_idx] * B[b_idx];
-        }
-    }
-}
-
-torch::Tensor elemwise_mul(const torch::Tensor& A,const torch::Tensor& B) {
-    int M = A.size(-2);
-    int N = B.size(-1);
-    int K = A.size(-1);
-
-    TORCH_CHECK(A.dtype() == B.dtype(), "Both inputs must have the same dtype.");
-
-    torch::Tensor output_shape;
-    std::vector<int64_t> output_size;
-
-    // Broadcasting
-    if (A.dim() > B.dim()) {
-        output_size = A.sizes().vec();
-        output_shape = A;
-        B = B.expand(output_size);
-    } else {
-        output_size = B.sizes().vec();
-        output_shape = B;
-        A = A.expand(output_size);
-    }
-
-    for (int i = 0; i < A.dim() - 2; i++) {
-        if (A.size(i) != B.size(i)) {
-            TORCH_CHECK(A.size(i) == 1 || B.size(i) == 1,
-                        "Dimension mismatch: A.size(", i, ")=", A.size(i),
-                        " does not match B.size(", i, ")=", B.size(i));
-            output_size[i] = std::max(A.size(i), B.size(i));
-            output_shape = at::broadcast_tensors(output_shape, output_shape.options().dtype(A.dtype()).device(A.device()), {output_size})[0];
-        }
-    }
-
-    torch::Tensor C = torch::empty(output_size, A.options());
-
-    const float* d_A = A.data_ptr<float>();
-    const float* d_B = B.data_ptr<float>();
-    float* d_C = C.data_ptr<float>();
-
-    int A_stride0 = A.stride(-2);
-    int A_stride1 = A.stride(-1);
-    int B_stride0 = B.stride(-2);
-    int B_stride1 = B.stride(-1);
-
-    dim3 block_size(32, 32);
-    dim3 grid_size((M + block_size.x - 1) / block_size.x, (N + block_size.y - 1) / block_size.y);
-
-    elemwise_mul_kernel<<<grid_size, block_size>>>(d_A, d_B, d_C, M, N, K,
-                                                    A_stride0, A_stride1,
-                                                    B_stride0, B_stride1);
-
-    return C;
-}
-*/
