@@ -1,6 +1,6 @@
 #include <vector>
 #include <torch/extension.h>
-std::vector<torch::Tensor> MyBatchNorm1D_train_cuda_forward(
+std::vector<torch::Tensor> MyBatchNorm2D_train_cuda_forward(
     torch::Tensor input, 
     torch::Tensor gamma, 
     torch::Tensor beta, 
@@ -9,7 +9,7 @@ std::vector<torch::Tensor> MyBatchNorm1D_train_cuda_forward(
     torch::Tensor momentum, 
     torch::Tensor eps);
 
-std::vector<torch::Tensor> MyBatchNorm1D_validation_cuda_forward(
+std::vector<torch::Tensor> MyBatchNorm2D_validation_cuda_forward(
     torch::Tensor input, 
     torch::Tensor gamma, 
     torch::Tensor beta, 
@@ -17,7 +17,7 @@ std::vector<torch::Tensor> MyBatchNorm1D_validation_cuda_forward(
     torch::Tensor running_var, 
     torch::Tensor eps);
 
-std::vector<torch::Tensor> MyBatchNorm1D_train_cuda_backward(
+std::vector<torch::Tensor> MyBatchNorm2D_train_cuda_backward(
     torch::Tensor grad_output, 
     torch::Tensor input, 
     torch::Tensor batch_norm, 
@@ -35,7 +35,7 @@ std::vector<torch::Tensor> MyBatchNorm1D_train_cuda_backward(
 #define CHECK_CONTIGUOUS(x) TORCH_CHECK(x.is_contiguous(), #x " must be contiguous")
 #define CHECK_INPUT(x) CHECK_CUDA(x); CHECK_CONTIGUOUS(x)
 
-std::vector<torch::Tensor> MyBatchNorm1D_train_forward(
+std::vector<torch::Tensor> MyBatchNorm2D_train_forward(
         torch::Tensor input, 
         torch::Tensor gamma,
         torch::Tensor beta,
@@ -50,10 +50,10 @@ std::vector<torch::Tensor> MyBatchNorm1D_train_forward(
     CHECK_INPUT(running_var);   
     CHECK_INPUT(momentum);
     CHECK_INPUT(eps);
-    return MyBatchNorm1D_train_cuda_forward(input, gamma, beta, running_mean, running_var, momentum, eps);
+    return MyBatchNorm2D_train_cuda_forward(input, gamma, beta, running_mean, running_var, momentum, eps);
 }
 
-std::vector<torch::Tensor> MyBatchNorm1D_validation_forward(
+std::vector<torch::Tensor> MyBatchNorm2D_validation_forward(
     torch::Tensor input,
     torch::Tensor gamma,
     torch::Tensor beta,
@@ -66,11 +66,11 @@ std::vector<torch::Tensor> MyBatchNorm1D_validation_forward(
     CHECK_INPUT(running_mean);
     CHECK_INPUT(running_var);
     CHECK_INPUT(eps);
-    return MyBatchNorm1D_validation_cuda_forward(input, gamma, beta, running_mean, running_var, eps);
+    return MyBatchNorm2D_validation_cuda_forward(input, gamma, beta, running_mean, running_var, eps);
 }
 
 
-std::vector<torch::Tensor> MyBatchNorm1D_train_backword(
+std::vector<torch::Tensor> MyBatchNorm2D_train_backword(
     torch::Tensor grad_output,
     torch::Tensor input,
     torch::Tensor batch_norm,
@@ -89,13 +89,13 @@ std::vector<torch::Tensor> MyBatchNorm1D_train_backword(
     CHECK_INPUT(gamma);
     CHECK_INPUT(beta);
     CHECK_INPUT(eps);
-    return MyBatchNorm1D_train_cuda_backward(grad_output, input, batch_norm, batch_mean, batch_var, batch_std, gamma, beta, eps);
+    return MyBatchNorm2D_train_cuda_backward(grad_output, input, batch_norm, batch_mean, batch_var, batch_std, gamma, beta, eps);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m){
-  m.def("train_forward", &MyBatchNorm1D_train_forward, "MyBatchNorm1D train forward");
-  m.def("validation_forward", &MyBatchNorm1D_validation_forward, "MyBatchNorm1D validation forward");
-  m.def("train_backward", &MyBatchNorm1D_train_backword, "MyBatchNorm1D train backward");
+  m.def("train_forward", &MyBatchNorm2D_train_forward, "MyBatchNorm2D train forward");
+  m.def("validation_forward", &MyBatchNorm2D_validation_forward, "MyBatchNorm2D validation forward");
+  m.def("train_backward", &MyBatchNorm2D_train_backword, "MyBatchNorm2D train backward");
 }
 
 

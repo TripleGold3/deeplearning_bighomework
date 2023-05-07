@@ -4,7 +4,10 @@ from torch.autograd import Function as Function
 import torch.nn.modules as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-import MyBatchNorm1D_cuda 
+import MyBatchNorm1D_cuda
+import torch.nn as nn
+# import os
+# os.environ["CUDA_VISIBLE_DEVICES"] = "cuda:0"
 class MyBatchNormalization1dFunction_cuda(Function):
     @staticmethod
     def forward(ctx, someclass, X, train_flag, epsilon, gamma, beta, monmentum, moving_mean, moving_var):
@@ -34,8 +37,8 @@ class MyBatchNormalization1d_cuda(nn.Module):
         factory_kwargs = {'device': device, 'dtype': dtype}
         self.num_features = num_features
        
-        self.gamma = torch.nn.Parameter(torch.ones(num_features))
-        self.beta = torch.nn.Parameter(torch.zeros(num_features))
+        self.gamma = torch.nn.Parameter(torch.ones((1,num_features)))
+        self.beta = torch.nn.Parameter(torch.zeros((1,num_features)))
         self.register_buffer('epsilon', eps * torch.ones(1, **factory_kwargs))
         self.register_buffer('momentum', momentum * torch.ones(1, **factory_kwargs))
         self.register_buffer('moving_mean', torch.zeros(num_features, **factory_kwargs))
@@ -45,7 +48,6 @@ class MyBatchNormalization1d_cuda(nn.Module):
         self.momentum: Optional[Tensor]
         self.moving_mean: Optional[Tensor]
         self.moving_var: Optional[Tensor]
-      
     def forward(self, X):
         output = MyBatchNormalization1dFunction_cuda.apply(self if self.training else None, X, self.training, self.epsilon, self.gamma, self.beta, self.momentum, self.moving_mean, self.moving_var)
         return  output
@@ -64,15 +66,15 @@ if __name__ == '__main__':
     model.to(device)
     # model.eval()
 
-    ctx, output = model(X)
-    print("cuda output:",output)
-    
+    output = model(X)
+    print("input", X, "\noutput:",output)
+    print("gamma: ", model.gamma)
     # model.eval()
     # output = model(X)
     
     
-    grad_output = torch.ones((4,3), requires_grad=True).to(device)
-    print(MyBatchNormalization1dFunction_cuda.backward(ctx, grad_output))
+    # grad_output = torch.ones((4,3), requires_grad=True).to(device)
+    # print(MyBatchNormalization1dFunction_cuda.backward(ctx, grad_output))
 #     grad_output = torch.ones((4,3), requires_grad=True).to(device)
 #     loss = MyBatchNormalization1dFunction_CPP.backward(ctx, grad_output)
 #     print(loss)
@@ -80,10 +82,10 @@ if __name__ == '__main__':
     
     
     
-#     X_baseline = X.clone()
-#     X_baseline = Variable(X_baseline, requires_grad=True)
-#     model_baseline = MyBatchNormalization1d(3)
-#     model_baseline.to(device)
+    # X_baseline = X.clone()
+    # X_baseline = Variable(X_baseline, requires_grad=True)
+    # model_baseline = MyBatchNormalization1d(3)
+    # model_baseline.to(device)
 #     ctx_baseline, output_baseline = model_baseline(X_baseline)
 #     print("python output:",output_baseline)  
 #     grad_output_baseline = torch.ones((4,3), requires_grad=True).to(device)

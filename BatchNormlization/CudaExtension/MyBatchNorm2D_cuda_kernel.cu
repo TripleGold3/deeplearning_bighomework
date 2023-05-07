@@ -213,7 +213,7 @@
 #include <vector>
 
 
-std::vector<torch::Tensor> MyBatchNorm1D_train_cuda_forward(
+std::vector<torch::Tensor> MyBatchNorm2D_train_cuda_forward(
     torch::Tensor input, 
     torch::Tensor gamma, 
     torch::Tensor beta, 
@@ -222,30 +222,30 @@ std::vector<torch::Tensor> MyBatchNorm1D_train_cuda_forward(
     torch::Tensor momentum, 
     torch::Tensor eps){
     
-    auto batch_mean = input.mean({0}, /*keepdim=*/true);
-    auto batch_var = input.sub(batch_mean).pow(2).mean({0}, /*keepdim=*/true);
-    auto batch_std = batch_var.add(eps).sqrt();
+    auto batch_mean = input.mean({0,2,3}, /*keepdim=*/true);
+    auto batch_var = input.sub(batch_mean).pow(2).mean({0,2,3}, /*keepdim=*/true);
+    auto batch_std = batch_var.add(eps.unsqueeze(-1).unsqueeze(-1)).sqrt();
     auto batch_norm = input.sub(batch_mean).div(batch_std);
-    auto output = batch_norm.mul(gamma).add(beta);
-    auto new_running_mean = running_mean.mul(momentum).add(batch_mean.mul(1 - momentum));
-    auto new_running_var = running_var.mul(momentum).add(batch_var.mul(1 - momentum));
+    auto output = batch_norm.mul(gamma.unsqueeze(-1).unsqueeze(-1)).add(beta.unsqueeze(-1).unsqueeze(-1));
+    auto new_running_mean = running_mean.mul(momentum).add(batch_mean.squeeze(-1).squeeze(-1).mul(1 - momentum));
+    auto new_running_var = running_var.mul(momentum).add(batch_var.squeeze(-1).squeeze(-1).mul(1 - momentum));
 
     return {output, batch_norm, batch_mean, batch_var, batch_std, new_running_mean, new_running_var};
 }
 
-std::vector<torch::Tensor> MyBatchNorm1D_validation_cuda_forward(
+std::vector<torch::Tensor> MyBatchNorm2D_validation_cuda_forward(
     torch::Tensor input, 
     torch::Tensor gamma, 
     torch::Tensor beta, 
     torch::Tensor running_mean, 
     torch::Tensor running_var, 
     torch::Tensor eps) {
-    auto batch_norm = input.sub(running_mean).div(running_var.add(eps).sqrt());
-    auto output = batch_norm.mul(gamma).add(beta);
+    auto batch_norm = input.sub(running_mean.unsqueeze(-1).unsqueeze(-1)).div(running_var.add(eps).unsqueeze(-1).unsqueeze(-1).sqrt());
+    auto output = batch_norm.mul(gamma.unsqueeze(-1).unsqueeze(-1)).add(beta.unsqueeze(-1).unsqueeze(-1));
     return {output};
 }
 
-std::vector<torch::Tensor> MyBatchNorm1D_train_cuda_backward(
+std::vector<torch::Tensor> MyBatchNorm2D_train_cuda_backward(
     torch::Tensor grad_output, 
     torch::Tensor input,
     torch::Tensor batch_norm, 
@@ -255,11 +255,15 @@ std::vector<torch::Tensor> MyBatchNorm1D_train_cuda_backward(
     torch::Tensor gamma, 
     torch::Tensor beta, 
     torch::Tensor eps) {
-    auto d_gamma = batch_norm.mul(grad_output).sum({0}, /*keepdim=*/true);
-    auto d_beta = grad_output.sum({0},/*keepdim=*/true);
-    auto d_batch_norm = grad_output.mul(gamma);
-    auto d_batch_var = (d_batch_norm.mul(input.sub(batch_mean)).mul(-0.5).mul(batch_var.add(eps).pow(-1.5))).sum({0}, /*keepdim=*/true);
-    auto d_batch_mean = ((d_batch_norm.mul(-1).div(batch_std)).sum({0}, /*keepdim=*/true)).add(d_batch_var.mul((input.sub(batch_mean).mul(-2).sum({0}, /*keepdim=*/true)).div(input.size(0))));
-    auto d_input = d_batch_norm.div(batch_std).add(d_batch_var.mul(2).div(input.size(0)).mul(input.sub(batch_mean))).add(d_batch_mean.div(input.size(0)));
+    auto N = input.size(0);
+    auto C = input.size(1);
+    auto H = input.size(2);
+    auto W = input.size(3);
+    auto d_gamma = batch_norm.mul(grad_output).sum({0}, /*keepdim=*/true).sum({-1}, /*keepdim=*/false).sum({-1}, /*keepdim=*/false);
+    auto d_beta = grad_output.sum({0},/*keepdim=*/true).sum({-1}, /*keepdim=*/false).sum({-1}, /*keepdim=*/false);
+    auto d_batch_norm = grad_output.mul(gamma.unsqueeze(-1).unsqueeze(-1));
+    auto d_batch_var = (d_batch_norm.mul(input.sub(batch_mean)).mul(-0.5).mul(batch_var.add(eps.unsqueeze(-1).unsqueeze(-1)).pow(-1.5))).sum({0,2,3}, /*keepdim=*/true);
+    auto d_batch_mean = ((d_batch_norm.mul(-1).div(batch_std)).sum({0,2,3}, /*keepdim=*/true)).add(d_batch_var.mul((input.sub(batch_mean).mul(-2).sum({0}, /*keepdim=*/true)).div(input.size(0))));
+    auto d_input = d_batch_norm.div(batch_std).add(d_batch_var.mul(2).div(N).div(H).div(W).mul(input.sub(batch_mean))).add(d_batch_mean.div(N).div(H).div(W));
     return {d_input, d_gamma, d_beta};
 }
